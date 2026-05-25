@@ -1,7 +1,15 @@
 import { AppModel, type IApp } from "../models/app.model.js";
 import { PermissionModel } from "../models/permission.model.js";
 import { logger } from "./logger.js";
-import { normalizeHttpMethod } from "./listHttpRoutes.js";
+import {
+  ALL_USER_AUTH_ROUTES,
+  GUEST_AUTH_ROUTES,
+} from "./authPublicRoutes.js";
+import {
+  autoPermissionDescription,
+  normalizeHttpMethod,
+  suggestPermissionName,
+} from "./listHttpRoutes.js";
 
 /** Ensures a single app config document exists (creates defaults on first run). */
 export async function ensureAppConfig(): Promise<void> {
@@ -19,6 +27,8 @@ export async function ensureAppConfig(): Promise<void> {
   const created: IApp = await AppModel.create({
     appName: "Default App",
     appLogo: "https://placehold.co/600x400",
+    openRegister: true,
+    openLogin: true,
   });
   logger.info(
     { appName: created.appName, id: String(created._id) },
@@ -26,47 +36,64 @@ export async function ensureAppConfig(): Promise<void> {
   );
 }
 
-/** Unauthenticated auth endpoints — `requirePermission` treats `all_guest` as public. */
-const GUEST_AUTH: { path: string; method: string }[] = [
-  { path: "/auth/send-otp", method: "POST" },
-  { path: "/auth/register", method: "POST" },
-  { path: "/auth/login", method: "POST" },
-];
-
-/** Session validation — any valid JWT (`all_user`), no role permission required. */
-const ALL_USER_AUTH: { path: string; method: string }[] = [
-  { path: "/auth/me", method: "GET" },
-  { path: "/auth/validate", method: "GET" },
-];
-
 /**
- * After `ensureRbacPermissionRows`, bumps auth-related rows from seeded `auto` to the right
- * `source` so guests can register/login and any logged-in user can hit `/me`.
- * Does not overwrite `custom` rows.
+ * After `ensureRbacPermissionRows`, ensures auth bootstrap routes are public in the DB
+ * (`all_guest` / `all_user`) so RBAC admin UI matches runtime behavior.
  */
 export async function ensureAuthRoutePermissionSources(): Promise<void> {
-  let guest = 0;
-  for (const { path, method } of GUEST_AUTH) {
+  let guestCreated = 0;
+  let guestUpgraded = 0;
+  for (const { path, method } of GUEST_AUTH_ROUTES) {
     const m = normalizeHttpMethod(method);
+    const exists = await PermissionModel.exists({ path, method: m }).exec();
+    if (!exists) {
+      await PermissionModel.create({
+        name: suggestPermissionName(path, method),
+        description: autoPermissionDescription(path, method),
+        path,
+        method: m,
+        source: "all_guest",
+      });
+      guestCreated += 1;
+      continue;
+    }
     const res = await PermissionModel.updateMany(
-      { path, method: m, source: "auto" },
+      { path, method: m },
       { $set: { source: "all_guest" } },
     ).exec();
-    guest += res.modifiedCount ?? 0;
+    guestUpgraded += res.modifiedCount ?? 0;
   }
 
-  let allUser = 0;
-  for (const { path, method } of ALL_USER_AUTH) {
+  let allUserCreated = 0;
+  let allUserUpgraded = 0;
+  for (const { path, method } of ALL_USER_AUTH_ROUTES) {
     const m = normalizeHttpMethod(method);
+    const exists = await PermissionModel.exists({ path, method: m }).exec();
+    if (!exists) {
+      await PermissionModel.create({
+        name: suggestPermissionName(path, method),
+        description: autoPermissionDescription(path, method),
+        path,
+        method: m,
+        source: "all_user",
+      });
+      allUserCreated += 1;
+      continue;
+    }
     const res = await PermissionModel.updateMany(
-      { path, method: m, source: "auto" },
+      { path, method: m },
       { $set: { source: "all_user" } },
     ).exec();
-    allUser += res.modifiedCount ?? 0;
+    allUserUpgraded += res.modifiedCount ?? 0;
   }
 
   logger.info(
-    { guestUpgraded: guest, allUserUpgraded: allUser },
-    "Auth route permission sources ensured (auto → all_guest / all_user)",
+    {
+      guestCreated,
+      guestUpgraded,
+      allUserCreated,
+      allUserUpgraded,
+    },
+    "Auth route permission sources ensured (all_guest / all_user)",
   );
 }

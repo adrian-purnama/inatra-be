@@ -58,6 +58,27 @@ const opportunityHeaderSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  /** Document-level tax rate % applied to line subtotal */
+  taxRate: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  subTotal: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  taxAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  grandTotal: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   estimateCloseDate : {
     type: Date,
     required: false,

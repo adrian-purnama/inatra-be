@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsIn,
   IsMongoId,
   IsNumber,
   IsOptional,
@@ -9,8 +10,14 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+import { QUOTATION_STATUS_VALUES } from "../models/quotation/quotationHeader.model.js";
 
-class OpportunityDetailInputDto {
+class QuotationDetailInputDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  sortOrder?: number;
+
   @IsString()
   @MinLength(1)
   @MaxLength(500)
@@ -20,12 +27,37 @@ class OpportunityDetailInputDto {
   @Min(0)
   quantity!: number;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  unit?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sku?: string;
+
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxRate?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  lineNotes?: string;
 }
 
-export class PatchOpportunityDto {
+export class PatchQuotationDto {
   @IsOptional()
   @IsMongoId()
   ownerId?: string;
@@ -42,10 +74,6 @@ export class PatchOpportunityDto {
   @IsOptional()
   @IsMongoId()
   marketSegmentId?: string;
-
-  @IsOptional()
-  @IsMongoId()
-  leadQualificationId?: string;
 
   @IsOptional()
   @IsMongoId()
@@ -88,11 +116,6 @@ export class PatchOpportunityDto {
   propability?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  taxRate?: number;
-
-  @IsOptional()
   @IsString()
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
     message: "estimateCloseDate must be YYYY-MM",
@@ -108,10 +131,42 @@ export class PatchOpportunityDto {
 
   @IsOptional()
   @IsArray()
-  details?: OpportunityDetailInputDto[];
+  @IsMongoId({ each: true })
+  attachmentAssetIds?: string[];
+
+  @IsOptional()
+  @IsIn(QUOTATION_STATUS_VALUES as unknown as string[])
+  quotationStatus?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  approverId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  currency?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxRate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountTotal?: number;
+
+  @IsOptional()
+  @IsString()
+  validUntil?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  termsAndConditions?: string;
 
   @IsOptional()
   @IsArray()
-  @IsMongoId({ each: true })
-  attachmentAssetIds?: string[];
+  details?: QuotationDetailInputDto[];
 }
