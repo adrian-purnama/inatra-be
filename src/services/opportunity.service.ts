@@ -46,6 +46,10 @@ type OpportunityOut = {
   location: { provinceId: string | null; regencyId: string | null; districtId: string | null };
   locationNames: { provinceName: string; regencyName: string; districtName: string };
   propability: number;
+  taxRate: number;
+  subTotal: number;
+  taxAmount: number;
+  grandTotal: number;
   estimateCloseDate: Date | undefined;
   actualCloseDate: Date | undefined;
   attachments: Array<{
@@ -65,6 +69,31 @@ type OpportunityOut = {
 type OpportunityHeaderOut = Omit<OpportunityOut, "details">;
 
 type OpportunityDetailOut = { id: string; description: string; quantity: number; price: number };
+
+function calculateOpportunityTotals(
+  details: Array<{ quantity: number; price: number }>,
+  taxRate: number,
+): { subTotal: number; taxAmount: number; grandTotal: number } {
+  const subTotal = Math.max(
+    0,
+    details.reduce((sum, d) => sum + Number(d.quantity ?? 0) * Number(d.price ?? 0), 0),
+  );
+  const taxAmount = Math.max(0, (subTotal * Number(taxRate ?? 0)) / 100);
+  return { subTotal, taxAmount, grandTotal: subTotal + taxAmount };
+}
+
+function opportunityTotalsPayload(
+  details: Array<{ quantity: number; price: number }>,
+  taxRate: number,
+): { taxRate: number; subTotal: number; taxAmount: number; grandTotal: number } {
+  const totals = calculateOpportunityTotals(details, taxRate);
+  return {
+    taxRate: Number(taxRate ?? 0),
+    subTotal: totals.subTotal,
+    taxAmount: totals.taxAmount,
+    grandTotal: totals.grandTotal,
+  };
+}
 
 function parseCloseMonth(monthValue: string | null | undefined): Date | null {
   if (!monthValue) return null;
@@ -146,6 +175,10 @@ function toOpportunityOut(
         : "",
     },
     propability: Number(row.propability ?? 0),
+    taxRate: Number(row.taxRate ?? 0),
+    subTotal: Number(row.subTotal ?? 0),
+    taxAmount: Number(row.taxAmount ?? 0),
+    grandTotal: Number(row.grandTotal ?? 0),
     estimateCloseDate: row.estimateCloseDate,
     actualCloseDate: row.actualCloseDate,
     attachments,
@@ -207,6 +240,10 @@ function toOpportunityHeaderOut(row: any): OpportunityHeaderOut {
       districtName: "",
     },
     propability: Number(row.propability ?? 0),
+    taxRate: Number(row.taxRate ?? 0),
+    subTotal: Number(row.subTotal ?? 0),
+    taxAmount: Number(row.taxAmount ?? 0),
+    grandTotal: Number(row.grandTotal ?? 0),
     estimateCloseDate: row.estimateCloseDate,
     actualCloseDate: row.actualCloseDate,
     attachments,
@@ -643,6 +680,13 @@ export async function createOpportunity(
               districtId: dto.districtId ?? null,
             },
             propability: dto.propability ?? 0,
+            ...opportunityTotalsPayload(
+              (dto.details ?? []).filter((d) => d.description.trim().length > 0).map((d) => ({
+                quantity: d.quantity,
+                price: d.price,
+              })),
+              Number(dto.taxRate ?? 0),
+            ),
             estimateCloseDate,
             actualCloseDate,
             attachmentAssetIds: (dto.attachmentAssetIds ?? [])
@@ -786,6 +830,23 @@ export async function patchOpportunity(
       .filter((id) => mongoose.isValidObjectId(id))
       .map((id) => new mongoose.Types.ObjectId(id));
     $set.attachmentsUpdatedAt = new Date();
+  }
+
+  const willRecalcTotals = dto.taxRate !== undefined || dto.details !== undefined;
+  if (willRecalcTotals) {
+    const detailsForTotals =
+      dto.details !== undefined
+        ? dto.details
+            .filter((d) => d.description.trim().length > 0)
+            .map((d) => ({ quantity: d.quantity, price: d.price }))
+        : (
+            await OpportunityDetailModel.find({ opportunityId })
+              .select("quantity price")
+              .lean()
+              .exec()
+          ).map((d) => ({ quantity: Number(d.quantity ?? 0), price: Number(d.price ?? 0) }));
+    const taxRate = Number(dto.taxRate ?? existing.taxRate ?? 0);
+    Object.assign($set, opportunityTotalsPayload(detailsForTotals, taxRate));
   }
 
   const session = await mongoose.startSession();

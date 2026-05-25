@@ -11,6 +11,7 @@ import { logger } from "../lib/logger.js";
 import { HttpError } from "../lib/errors.js";
 import { PermissionModel } from "../models/permission.model.js";
 import { UserModel } from "../models/user.model.js";
+import { isAllUserAuthRoute, isGuestAuthRoute } from "../lib/authPublicRoutes.js";
 import { getEffectivePermissionIdsForRoleIds } from "../lib/rbac.js";
 
 type RoutePermRow = {
@@ -64,6 +65,12 @@ export async function requirePermission(
   const path = joinMountedPath(req.baseUrl, req.path);
   const method = normalizeHttpMethod(req.method);
   logger.debug({ path, method, baseUrl: req.baseUrl, reqPath: req.path }, "RBAC route lookup");
+
+  if (isGuestAuthRoute(path, method)) {
+    logger.debug({ path, method }, "proceed to next: built-in guest auth route");
+    next();
+    return;
+  }
 
   const rows = await getRoutePermissionRows(path, method);
   logger.debug(
@@ -163,7 +170,10 @@ export async function requirePermission(
     return;
   }
 
-  if (rows.some((r) => r.source === "all_user" || r.source === "all")) {
+  if (
+    isAllUserAuthRoute(path, method) ||
+    rows.some((r) => r.source === "all_user" || r.source === "all")
+  ) {
     const permissionIds = await getEffectivePermissionIdsForRoleIds(user.roleIds ?? []);
     const permissionRows =
       permissionIds.length > 0

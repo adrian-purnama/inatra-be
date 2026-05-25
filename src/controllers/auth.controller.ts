@@ -6,7 +6,6 @@ import { SendOtpDto } from "../dto/sendOtp.dto.js";
 import { sendServiceResult } from "../lib/serviceResponse.js";
 import { validateOrThrow } from "../lib/errors.js";
 import * as authService from "../services/auth.service.js";
-import { logger } from "../lib/logger.js";
 
 export async function sendOtp(req: Request, res: Response) {
   const dto = Object.assign(new SendOtpDto(), req.body ?? {});

@@ -85,6 +85,11 @@ export class CreateOpportunityDto {
   propability?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxRate?: number;
+
+  @IsOptional()
   @IsString()
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
     message: "estimateCloseDate must be YYYY-MM",

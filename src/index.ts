@@ -13,6 +13,7 @@ import { opportunityRouter } from "./routes/opportunity.route.js";
 import { dataEntryRouter } from "./routes/dataEntry.route.js";
 import { locationRouter } from "./routes/location.route.js";
 import { publicFilesRouter } from "./routes/publicFiles.route.js";
+import { quotationRouter } from "./routes/quotation.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import {
   ensureAppConfig,
@@ -39,6 +40,7 @@ setRbacHttpMounts([
   { prefix: "/opportunity", router: opportunityRouter },
   { prefix: "/data-entry", router: dataEntryRouter },
   { prefix: "/location", router: locationRouter },
+  { prefix: "/quotation", router: quotationRouter },
   { prefix: "/public-files", router: publicFilesRouter },
 ]);
 const port = env.port;
@@ -74,6 +76,7 @@ app.use("/admin", adminRouter);
 app.use("/opportunity", opportunityRouter);
 app.use("/data-entry", dataEntryRouter);
 app.use("/location", locationRouter);
+app.use("/quotation", quotationRouter);
 app.use(errorHandler);
 
 logger.info("Starting server");
