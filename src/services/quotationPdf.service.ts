@@ -2,6 +2,7 @@ import type { ServiceResult } from "../lib/serviceResponse.js";
 import { failResult, okResult } from "../lib/serviceResponse.js";
 import { buildQuotationPdfBuffer, type QuotationPdfInput } from "../lib/quotationToPdf.js";
 import { getBranding } from "./branding.service.js";
+import { getAppInfo, type AppInfoOut } from "./appInfo.service.js";
 import * as quotationService from "./quotation.service.js";
 
 const PDF_EXPORT_STATUSES = new Set(["open", "close", "loss"]);
@@ -17,7 +18,10 @@ type QuotationItem = NonNullable<
   Extract<Awaited<ReturnType<typeof quotationService.getQuotationById>>, { success: true }>["data"]
 >["item"];
 
-function quotationToPdfInput(item: QuotationItem): QuotationPdfInput {
+function quotationToPdfInput(
+  item: QuotationItem,
+  appInfo: AppInfoOut,
+): QuotationPdfInput {
   return {
     quotationNo: item.quotationNo,
     revisionNo: item.revisionNo,
@@ -26,6 +30,7 @@ function quotationToPdfInput(item: QuotationItem): QuotationPdfInput {
     approvedAt: item.approvedAt,
     lineOfBusinessName: item.lineOfBusinessName,
     marketSegmentName: item.marketSegmentName,
+    companyInformation: appInfo.companyInformation,
     customer: item.customer,
     endUser: item.endUser,
     contact: item.contact,
@@ -39,6 +44,9 @@ function quotationToPdfInput(item: QuotationItem): QuotationPdfInput {
     grandTotal: item.grandTotal,
     validUntil: item.validUntil,
     termsAndConditions: item.termsAndConditions,
+    termsOfPaymentSelected: item.quotationInformationSelected?.termsOfPaymentSelected ?? [],
+    termsOfDeliverySelected: item.quotationInformationSelected?.termsOfDeliverySelected ?? [],
+    termsOfWarrantySelected: item.quotationInformationSelected?.termsOfWarrantySelected ?? [],
     createdAt: item.createdAt,
     details: item.details.map((d) => ({
       sortOrder: d.sortOrder,
@@ -77,8 +85,13 @@ export async function exportQuotationPdf(
     );
   }
 
+  const appInfoResult = await getAppInfo();
+  if (!appInfoResult.success || appInfoResult.data == null) {
+    return failResult(appInfoResult.code, appInfoResult.message ?? "Could not load app info");
+  }
+
   const buffer = await buildQuotationPdfBuffer(
-    quotationToPdfInput(item),
+    quotationToPdfInput(item, appInfoResult.data),
     brandingResult.data,
   );
   const filename = `Quotation_${sanitizeFilenamePart(item.quotationNo)}_Rev${item.revisionNo}.pdf`;

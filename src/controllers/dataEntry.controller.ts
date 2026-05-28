@@ -12,11 +12,14 @@ import { CreateStatusDto } from "../dto/createStatus.dto.js";
 import { PatchStatusDto } from "../dto/patchStatus.dto.js";
 import { CreateVendorDto } from "../dto/createVendor.dto.js";
 import { PatchVendorDto } from "../dto/patchVendor.dto.js";
+import { CreateProductDto } from "../dto/createProduct.dto.js";
+import { PatchProductDto } from "../dto/patchProduct.dto.js";
 import * as lineOfBusinessService from "../services/lineOfBusiness.service.js";
 import * as marketSegmentService from "../services/marketSegment.service.js";
 import * as externalOrgService from "../services/externalOrg.service.js";
 import * as statusService from "../services/status.service.js";
 import * as vendorService from "../services/vendor.service.js";
+import * as productService from "../services/product.service.js";
 
 function paramId(req: Request, key: string): string | undefined {
   const raw = req.params[key];
@@ -200,5 +203,34 @@ export async function deleteStatus(req: Request, res: Response) {
   const dto = Object.assign(new MongoIdParamDto(), { id: paramId(req, "id") ?? "" });
   await validateOrThrow(dto);
   const result = await statusService.deleteStatus(dto);
+  sendServiceResult(res, result);
+}
+
+export async function listProducts(req: Request, res: Response) {
+  const q = req.query["q"];
+  const qStr =
+    typeof q === "string" ? q : Array.isArray(q) && typeof q[0] === "string" ? q[0] : "";
+  const result = await productService.listProducts({ q: qStr });
+  sendServiceResult(res, result);
+}
+
+export async function createProduct(req: Request, res: Response) {
+  const dto = Object.assign(new CreateProductDto(), req.body ?? {});
+  await validateOrThrow(dto);
+  const result = await productService.createProduct(dto);
+  sendServiceResult(res, result);
+}
+
+export async function patchProduct(req: Request, res: Response) {
+  const dto = Object.assign(new PatchProductDto(), req.body ?? {});
+  await validateOrThrow(dto);
+  const result = await productService.patchProduct(paramId(req, "id"), dto);
+  sendServiceResult(res, result);
+}
+
+export async function deleteProduct(req: Request, res: Response) {
+  const dto = Object.assign(new MongoIdParamDto(), { id: paramId(req, "id") ?? "" });
+  await validateOrThrow(dto);
+  const result = await productService.deleteProduct(dto);
   sendServiceResult(res, result);
 }

@@ -72,7 +72,7 @@ type QuotationOut = {
   marketSegmentName: string;
   customer: { customerName: string; customerId: string | null };
   endUser: { endUserName: string; endUserId: string | null };
-  contact: { contactName: string; contactDetails: string[] };
+  contact: { contactName: string; contactSuffix: string; contactDetails: string[] };
   notes: string;
   location: { provinceId: string | null; regencyId: string | null; districtId: string | null };
   locationNames: { provinceName: string; regencyName: string; districtName: string };
@@ -89,6 +89,11 @@ type QuotationOut = {
   grandTotal: number;
   validUntil: Date | null;
   termsAndConditions: string;
+  quotationInformationSelected: {
+    termsOfPaymentSelected: string[];
+    termsOfDeliverySelected: string[];
+    termsOfWarrantySelected: string[];
+  };
   isActive: boolean;
   createdAt: Date | undefined;
   updatedAt: Date | undefined;
@@ -240,6 +245,7 @@ function toQuotationOut(
     },
     contact: {
       contactName: String(row.contact?.contactName ?? ""),
+      contactSuffix: String(row.contact?.contactSuffix ?? ""),
       contactDetails: (row.contact?.contactDetails ?? []).map(String),
     },
     notes: String(row.notes ?? ""),
@@ -272,6 +278,11 @@ function toQuotationOut(
     grandTotal: Number(row.grandTotal ?? 0),
     validUntil: row.validUntil ?? null,
     termsAndConditions: String(row.termsAndConditions ?? ""),
+    quotationInformationSelected: {
+      termsOfPaymentSelected: (row.quotationInformationSelected?.termsOfPaymentSelected ?? []).map(String),
+      termsOfDeliverySelected: (row.quotationInformationSelected?.termsOfDeliverySelected ?? []).map(String),
+      termsOfWarrantySelected: (row.quotationInformationSelected?.termsOfWarrantySelected ?? []).map(String),
+    },
     isActive: Boolean(row.isActive),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -494,13 +505,53 @@ export async function getQuotationById(
   });
 }
 
-async function resolveQuotationSeedFromOpportunity(opportunityId: string) {
+type QuotationSeed =
+  | null
+  | {
+      ownerId: string;
+      availableTo: string[];
+      lineOfBusinessId: string;
+      marketSegmentId: string;
+      customerId: string | null;
+      endUserId: string | null;
+      contactName: string;
+      contactSuffix: string;
+      contactDetails: string[];
+      notes: string;
+      provinceId: string | null;
+      regencyId: string | null;
+      districtId: string | null;
+      propability: number;
+      estimateCloseDate: any;
+      actualCloseDate: any;
+      attachmentAssetIds: string[];
+      taxRate: number;
+      details: Array<{
+        sortOrder: number;
+        description: string;
+        quantity: number;
+        unit: string;
+        sku: string;
+        price: number;
+        discount: number;
+        taxRate: number;
+        lineNotes: string;
+      }>;
+    }
+  | { __error: string };
+
+async function resolveQuotationSeedFromOpportunity(opportunityId: string): Promise<QuotationSeed> {
   const row = await OpportunityModel.findById(opportunityId).lean().exec();
   if (!row) return null;
   const details = await OpportunityDetailModel.find({ opportunityId })
     .sort({ createdAt: 1 })
     .lean()
     .exec();
+  if ((details ?? []).some((d: { sku?: unknown }) => !String(d.sku ?? "").trim())) {
+    return {
+      __error: "Opportunity has non-SKU items. Ask admin to add the product and select it before creating quotation",
+    };
+  }
   return {
     ownerId: String(row.ownerId),
     availableTo: (row.availableTo ?? []).map(String),
@@ -509,6 +560,7 @@ async function resolveQuotationSeedFromOpportunity(opportunityId: string) {
     customerId: row.customer?.customerId ? String(row.customer.customerId) : null,
     endUserId: row.endUser?.endUserId ? String(row.endUser.endUserId) : null,
     contactName: String(row.contact?.contactName ?? ""),
+    contactSuffix: String(row.contact?.contactSuffix ?? ""),
     contactDetails: (row.contact?.contactDetails ?? []).map(String),
     notes: String(row.notes ?? ""),
     provinceId: row.location?.provinceId ? String(row.location.provinceId) : null,
@@ -523,10 +575,10 @@ async function resolveQuotationSeedFromOpportunity(opportunityId: string) {
       sortOrder: 0,
       description: String(d.description ?? ""),
       quantity: Number(d.quantity ?? 0),
-      unit: "",
-      sku: "",
+      unit: String(d.unit ?? ""),
+      sku: String(d.sku ?? ""),
       price: Number(d.price ?? 0),
-      discount: 0,
+      discount: Number(d.discount ?? 0),
       taxRate: 0,
       lineNotes: "",
     })),
@@ -545,12 +597,16 @@ export async function createQuotation(
       ? await resolveQuotationSeedFromOpportunity(dto.opportunityId)
       : null;
   if (dto.opportunityId && !seed) return failResult(404, "Opportunity not found");
+  if (dto.opportunityId && seed && "__error" in seed) {
+    return failResult(400, String(seed.__error));
+  }
+  const seedOk = seed && !("__error" in seed) ? seed : null;
 
   const opportunityId =
     dto.opportunityId && mongoose.isValidObjectId(dto.opportunityId) ? dto.opportunityId : "";
   if (!opportunityId) return failResult(400, "opportunityId is required");
-  const lineOfBusinessId = dto.lineOfBusinessId ?? seed?.lineOfBusinessId ?? "";
-  const marketSegmentId = dto.marketSegmentId ?? seed?.marketSegmentId ?? "";
+  const lineOfBusinessId = dto.lineOfBusinessId ?? seedOk?.lineOfBusinessId ?? "";
+  const marketSegmentId = dto.marketSegmentId ?? seedOk?.marketSegmentId ?? "";
   if (!mongoose.isValidObjectId(lineOfBusinessId)) {
     return failResult(400, "lineOfBusinessId is required");
   }
@@ -566,24 +622,26 @@ export async function createQuotation(
     return failResult(400, "Invalid approver user");
   }
 
-  const detailsInput = (dto.details ?? seed?.details ?? []).filter(
-    (d) => d.description.trim().length > 0,
+  const detailsInput = (dto.details ?? seedOk?.details ?? []).filter(
+    (d: { description: string }) => d.description.trim().length > 0,
   );
   const discountTotal = Number(dto.discountTotal ?? 0);
-  const taxRate = Number(dto.taxRate ?? seed?.taxRate ?? 0);
+  const taxRate = Number(dto.taxRate ?? seedOk?.taxRate ?? 0);
   const totals = calculateTotals(detailsInput, taxRate, discountTotal);
-  const customerId = dto.customerId ?? seed?.customerId ?? null;
-  const endUserId = dto.endUserId ?? seed?.endUserId ?? null;
+  const customerId = dto.customerId ?? seedOk?.customerId ?? null;
+  const endUserId = dto.endUserId ?? seedOk?.endUserId ?? null;
   const customerName = await getExternalOrgNameById(customerId ?? undefined);
   const endUserName = await getExternalOrgNameById(endUserId ?? undefined);
-  const availableTo = [...new Set([ownerId, ...(dto.availableTo ?? seed?.availableTo ?? [])])];
+  const availableTo = [...new Set([ownerId, ...(dto.availableTo ?? seedOk?.availableTo ?? [])])];
   const estimateCloseDate = dto.estimateCloseDate
     ? parseCloseMonth(dto.estimateCloseDate)
-    : seed?.estimateCloseDate ?? null;
+    : seedOk?.estimateCloseDate ?? null;
   const actualCloseDate = dto.actualCloseDate
     ? parseCloseMonth(dto.actualCloseDate)
-    : seed?.actualCloseDate ?? null;
+    : seedOk?.actualCloseDate ?? null;
   const quotationStatus = statusAfterSubmit("draft", Boolean(approverId));
+  const normalizeSelected = (input: string[] | undefined | null): string[] =>
+    [...new Set((input ?? []).map((x) => String(x ?? "").trim()).filter(Boolean))];
 
   const createdDocs = await QuotationHeaderModel.create([
     {
@@ -595,21 +653,22 @@ export async function createQuotation(
       customer: { customerName, customerId: asObjectIdOrNull(customerId) },
       endUser: { endUserName, endUserId: asObjectIdOrNull(endUserId) },
       contact: {
-        contactName: dto.contactName ?? seed?.contactName ?? "",
-        contactDetails: dto.contactDetails ?? seed?.contactDetails ?? [],
+        contactName: dto.contactName ?? seedOk?.contactName ?? "",
+        contactSuffix: dto.contactSuffix?.trim() ?? seedOk?.contactSuffix ?? "",
+        contactDetails: dto.contactDetails ?? seedOk?.contactDetails ?? [],
       },
-      notes: dto.notes ?? seed?.notes ?? "",
+      notes: dto.notes ?? seedOk?.notes ?? "",
       location: {
-        provinceId: asObjectIdOrNull(dto.provinceId ?? seed?.provinceId ?? null),
-        regencyId: asObjectIdOrNull(dto.regencyId ?? seed?.regencyId ?? null),
-        districtId: asObjectIdOrNull(dto.districtId ?? seed?.districtId ?? null),
+        provinceId: asObjectIdOrNull(dto.provinceId ?? seedOk?.provinceId ?? null),
+        regencyId: asObjectIdOrNull(dto.regencyId ?? seedOk?.regencyId ?? null),
+        districtId: asObjectIdOrNull(dto.districtId ?? seedOk?.districtId ?? null),
       },
-      propability: dto.propability ?? seed?.propability ?? 0,
+      propability: dto.propability ?? seedOk?.propability ?? 0,
       estimateCloseDate,
       actualCloseDate,
-      attachmentAssetIds: (dto.attachmentAssetIds ?? seed?.attachmentAssetIds ?? [])
-        .filter((id) => mongoose.isValidObjectId(id))
-        .map((id) => new mongoose.Types.ObjectId(id)),
+      attachmentAssetIds: (dto.attachmentAssetIds ?? seedOk?.attachmentAssetIds ?? [])
+        .filter((id: string) => mongoose.isValidObjectId(id))
+        .map((id: string) => new mongoose.Types.ObjectId(id)),
       attachmentsUpdatedAt: new Date(),
       quotationNo: dto.quotationNo?.trim() || buildQuotationNo(),
       revisionNo: dto.revisionNo ?? 0,
@@ -626,6 +685,11 @@ export async function createQuotation(
       grandTotal: totals.grandTotal,
       validUntil: parseIsoDate(dto.validUntil ?? null),
       termsAndConditions: dto.termsAndConditions ?? "",
+      quotationInformationSelected: {
+        termsOfPaymentSelected: normalizeSelected(dto.termsOfPaymentSelected),
+        termsOfDeliverySelected: normalizeSelected(dto.termsOfDeliverySelected),
+        termsOfWarrantySelected: normalizeSelected(dto.termsOfWarrantySelected),
+      },
       isActive: true,
     },
   ]);
@@ -634,7 +698,7 @@ export async function createQuotation(
 
   if (detailsInput.length > 0) {
     await QuotationDetailModel.insertMany(
-      detailsInput.map((d) => ({
+      detailsInput.map((d: any) => ({
         quotationId: created._id,
         sortOrder: Number(d.sortOrder ?? 0),
         description: d.description.trim(),
@@ -697,9 +761,10 @@ export async function patchQuotation(
       endUserId: dto.endUserId === null ? null : dto.endUserId,
     };
   }
-  if (dto.contactName !== undefined || dto.contactDetails !== undefined) {
+  if (dto.contactName !== undefined || dto.contactSuffix !== undefined || dto.contactDetails !== undefined) {
     $set.contact = {
       contactName: dto.contactName ?? existing.contact?.contactName ?? "",
+      contactSuffix: dto.contactSuffix?.trim() ?? existing.contact?.contactSuffix ?? "",
       contactDetails: dto.contactDetails ?? (existing.contact?.contactDetails ?? []).map(String),
     };
   }
@@ -741,6 +806,17 @@ export async function patchQuotation(
   if (dto.discountTotal !== undefined) $set.discountTotal = dto.discountTotal;
   if (dto.validUntil !== undefined) $set.validUntil = parseIsoDate(dto.validUntil);
   if (dto.termsAndConditions !== undefined) $set.termsAndConditions = dto.termsAndConditions;
+  const normalizeSelected = (input: string[] | undefined | null): string[] =>
+    [...new Set((input ?? []).map((x) => String(x ?? "").trim()).filter(Boolean))];
+  if (dto.termsOfPaymentSelected !== undefined) {
+    $set["quotationInformationSelected.termsOfPaymentSelected"] = normalizeSelected(dto.termsOfPaymentSelected);
+  }
+  if (dto.termsOfDeliverySelected !== undefined) {
+    $set["quotationInformationSelected.termsOfDeliverySelected"] = normalizeSelected(dto.termsOfDeliverySelected);
+  }
+  if (dto.termsOfWarrantySelected !== undefined) {
+    $set["quotationInformationSelected.termsOfWarrantySelected"] = normalizeSelected(dto.termsOfWarrantySelected);
+  }
 
   const detailsInput =
     dto.details?.filter((d) => d.description.trim().length > 0).map((d) => ({
@@ -911,7 +987,8 @@ export async function reviseQuotation(
     return failResult(400, "Only approved/open quotation can be revised");
   }
 
-  const approverId = dto.approverId ?? (row.approver?.approverId ? String(row.approver.approverId) : "");
+  // New revisions default to draft with no approver unless approverId is explicitly sent.
+  const approverId = dto.approverId !== undefined ? String(dto.approverId ?? "").trim() : "";
   if (approverId && !(await userCanBeQuotationApproverCandidate(approverId))) {
     return failResult(400, "Invalid approver user");
   }

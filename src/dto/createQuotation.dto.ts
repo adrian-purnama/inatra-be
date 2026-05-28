@@ -93,6 +93,11 @@ export class CreateQuotationDto {
   contactName?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  contactSuffix?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   contactDetails?: string[];
@@ -179,6 +184,24 @@ export class CreateQuotationDto {
   @IsString()
   @MaxLength(4000)
   termsAndConditions?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(300, { each: true })
+  termsOfPaymentSelected?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(300, { each: true })
+  termsOfDeliverySelected?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(300, { each: true })
+  termsOfWarrantySelected?: string[];
 
   @IsOptional()
   @IsArray()

@@ -20,6 +20,43 @@ const appSchema = new mongoose.Schema({
     required: true,
     default: true,
   },
+  personSuffix: {
+    type: [String],
+    default: [],
+  },
+  companyInformation: {
+    companyName: {
+      type: String,
+      required: true,
+      default: "",
+    },
+    companyAddress: {
+      type: String,
+      required: true,
+      default: "",
+    },
+    companyPhone: {
+      type: String,
+      required: true,
+      default: "",
+    },
+    companyEmail: {
+      type: String,
+      required: true,
+      default: "",
+    },
+    companyWebsite: {
+      type: String,
+      required: true,
+      default: "",
+    }
+  },
+
+  quotationInformation: {
+    termsOfPayment: { type: [String], default: [] },
+    termsOfDelivery: { type: [String], default: [] },
+    termsOfWarranty: { type: [String], default: [] },
+  }
 });
 
 /** Mongoose document type — use this for `create` / `find` results, not `AppDto`. */

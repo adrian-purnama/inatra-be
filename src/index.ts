@@ -14,6 +14,9 @@ import { dataEntryRouter } from "./routes/dataEntry.route.js";
 import { locationRouter } from "./routes/location.route.js";
 import { publicFilesRouter } from "./routes/publicFiles.route.js";
 import { quotationRouter } from "./routes/quotation.route.js";
+import { appInfoRouter } from "./routes/appInfo.route.js";
+import { folderNodeRouter } from "./routes/folderNode.route.js";
+import { foldersRouter } from "./routes/folders.route.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import {
   ensureAppConfig,
@@ -37,8 +40,11 @@ setRbacHttpMounts([
   { prefix: "/auth", router: authRouter },
   { prefix: "/branding", router: brandingRouter },
   { prefix: "/admin", router: adminRouter },
+  { prefix: "/app", router: appInfoRouter },
   { prefix: "/opportunity", router: opportunityRouter },
   { prefix: "/data-entry", router: dataEntryRouter },
+  { prefix: "/folder-node", router: folderNodeRouter },
+  { prefix: "/folders", router: foldersRouter },
   { prefix: "/location", router: locationRouter },
   { prefix: "/quotation", router: quotationRouter },
   { prefix: "/public-files", router: publicFilesRouter },
@@ -73,8 +79,11 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use("/auth", authRouter);
 app.use("/branding", brandingRouter);
 app.use("/admin", adminRouter);
+app.use("/app", appInfoRouter);
 app.use("/opportunity", opportunityRouter);
 app.use("/data-entry", dataEntryRouter);
+app.use("/folder-node", folderNodeRouter);
+app.use("/folders", foldersRouter);
 app.use("/location", locationRouter);
 app.use("/quotation", quotationRouter);
 app.use(errorHandler);

@@ -16,6 +16,10 @@ class OpportunityDetailInputDto {
   @MaxLength(500)
   description!: string;
 
+  @IsOptional()
+  @IsMongoId()
+  productId?: string | null;
+
   @IsNumber()
   @Min(0)
   quantity!: number;
@@ -23,6 +27,16 @@ class OpportunityDetailInputDto {
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  unit?: string;
 }
 
 export class CreateOpportunityDto {
@@ -56,6 +70,11 @@ export class CreateOpportunityDto {
   @IsString()
   @MaxLength(200)
   contactName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  contactSuffix?: string;
 
   @IsOptional()
   @IsArray()

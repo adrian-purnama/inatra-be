@@ -22,6 +22,29 @@ const opportunityDetailSchema = new mongoose.Schema({
     required: true,
     min: 0,
   },
+  discount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+    default: null,
+    index: true,
+  },
+  /** SKU snapshot (copied from Product when productId is set) */
+  sku: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+  /** Unit of measure — from product when SKU-linked; manual for free-text lines */
+  unit: {
+    type: String,
+    default: "",
+    trim: true,
+  },
 }, { timestamps: true });
 
 export type OpportunityDetailAttrs = mongoose.InferSchemaType<typeof opportunityDetailSchema>;

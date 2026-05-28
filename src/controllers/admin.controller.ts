@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { plainToInstance } from "class-transformer";
 import { failResult, sendServiceResult } from "../lib/serviceResponse.js";
 import { validateOrThrow } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
@@ -27,7 +28,9 @@ export async function getApp(_req: Request, res: Response) {
 }
 
 export async function patchApp(req: Request, res: Response) {
-  const dto = Object.assign(new PatchAppDto(), req.body ?? {});
+  // This endpoint includes nested objects/arrays; use class-transformer so
+  // class-validator can validate nested DTOs correctly.
+  const dto = plainToInstance(PatchAppDto, req.body ?? {});
   await validateOrThrow(dto);
   const result = await adminApp.patchAppSettings(dto);
   sendServiceResult(res, result);

@@ -41,6 +41,7 @@ const opportunityHeaderSchema = new mongoose.Schema({
   },
   contact : {
     contactName : {type:String},
+    contactSuffix: { type: String, default: "" },
     contactDetails : {
       type: [String],
       default: [],

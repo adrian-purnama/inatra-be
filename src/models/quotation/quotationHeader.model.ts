@@ -77,6 +77,7 @@ const quotationHeaderSchema = new mongoose.Schema(
     },
     contact: {
       contactName: { type: String },
+      contactSuffix: { type: String, default: "" },
       contactDetails: {
         type: [String],
         default: [],
@@ -185,6 +186,11 @@ const quotationHeaderSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+    quotationInformationSelected: {
+      termsOfPaymentSelected: { type: [String], default: [] },
+      termsOfDeliverySelected: { type: [String], default: [] },
+      termsOfWarrantySelected: { type: [String], default: [] },
     },
     grandTotal: {
       type: Number,

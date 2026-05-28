@@ -15,6 +15,19 @@ export type AppSettingsOut = {
   appLogo: string;
   openRegister: boolean;
   openLogin: boolean;
+  personSuffix: string[];
+  companyInformation: {
+    companyName: string;
+    companyAddress: string;
+    companyPhone: string;
+    companyEmail: string;
+    companyWebsite: string;
+  };
+  quotationInformation: {
+    termsOfPayment: string[];
+    termsOfDelivery: string[];
+    termsOfWarranty: string[];
+  };
 };
 
 function toOut(doc: {
@@ -23,6 +36,19 @@ function toOut(doc: {
   appLogo: string;
   openRegister: boolean;
   openLogin: boolean;
+  personSuffix?: string[] | null;
+  companyInformation?: {
+    companyName?: string | null;
+    companyAddress?: string | null;
+    companyPhone?: string | null;
+    companyEmail?: string | null;
+    companyWebsite?: string | null;
+  } | null;
+  quotationInformation?: {
+    termsOfPayment?: string[] | null;
+    termsOfDelivery?: string[] | null;
+    termsOfWarranty?: string[] | null;
+  } | null;
 }): AppSettingsOut {
   return {
     id: String(doc._id),
@@ -30,11 +56,45 @@ function toOut(doc: {
     appLogo: doc.appLogo,
     openRegister: Boolean(doc.openRegister),
     openLogin: Boolean(doc.openLogin),
+    personSuffix: (doc.personSuffix ?? []).map(String),
+    companyInformation: {
+      companyName: String(doc.companyInformation?.companyName ?? ""),
+      companyAddress: String(doc.companyInformation?.companyAddress ?? ""),
+      companyPhone: String(doc.companyInformation?.companyPhone ?? ""),
+      companyEmail: String(doc.companyInformation?.companyEmail ?? ""),
+      companyWebsite: String(doc.companyInformation?.companyWebsite ?? ""),
+    },
+    quotationInformation: {
+      termsOfPayment: (doc.quotationInformation?.termsOfPayment ?? []).map(String),
+      termsOfDelivery: (doc.quotationInformation?.termsOfDelivery ?? []).map(String),
+      termsOfWarranty: (doc.quotationInformation?.termsOfWarranty ?? []).map(String),
+    },
   };
 }
 
+function normalizeStringArray(input: string[] | undefined): string[] | undefined {
+  if (input === undefined) return undefined;
+  const out = input
+    .map((v) => String(v ?? "").trim())
+    .filter((v) => v.length > 0);
+  return out;
+}
+
 export async function fetchAppSettings(): Promise<ServiceResult<AppSettingsOut>> {
-  const doc = await AppModel.findOne().lean().exec();
+  const doc = await AppModel.findOne()
+    .select(
+      [
+        "appName",
+        "appLogo",
+        "openRegister",
+        "openLogin",
+        "personSuffix",
+        "companyInformation",
+        "quotationInformation",
+      ].join(" "),
+    )
+    .lean()
+    .exec();
   if (doc == null) {
     return failResult(503, "App configuration not ready");
   }
@@ -49,16 +109,51 @@ export async function patchAppSettings(
   if (dto.appLogo !== undefined) $set.appLogo = dto.appLogo.trim();
   if (dto.openRegister !== undefined) $set.openRegister = dto.openRegister;
   if (dto.openLogin !== undefined) $set.openLogin = dto.openLogin;
+  if (dto.personSuffix !== undefined) $set.personSuffix = normalizeStringArray(dto.personSuffix) ?? [];
+
+  if (dto.companyInformation !== undefined) {
+    const ci = dto.companyInformation;
+    if (ci.companyName !== undefined) $set["companyInformation.companyName"] = ci.companyName.trim();
+    if (ci.companyAddress !== undefined)
+      $set["companyInformation.companyAddress"] = ci.companyAddress.trim();
+    if (ci.companyPhone !== undefined) $set["companyInformation.companyPhone"] = ci.companyPhone.trim();
+    if (ci.companyEmail !== undefined) $set["companyInformation.companyEmail"] = ci.companyEmail.trim();
+    if (ci.companyWebsite !== undefined)
+      $set["companyInformation.companyWebsite"] = ci.companyWebsite.trim();
+  }
+
+  if (dto.quotationInformation !== undefined) {
+    const qi = dto.quotationInformation;
+    if (qi.termsOfPayment !== undefined)
+      $set["quotationInformation.termsOfPayment"] = normalizeStringArray(qi.termsOfPayment) ?? [];
+    if (qi.termsOfDelivery !== undefined)
+      $set["quotationInformation.termsOfDelivery"] = normalizeStringArray(qi.termsOfDelivery) ?? [];
+    if (qi.termsOfWarranty !== undefined)
+      $set["quotationInformation.termsOfWarranty"] = normalizeStringArray(qi.termsOfWarranty) ?? [];
+  }
 
   if (Object.keys($set).length === 0) {
     return failResult(
       400,
-      "Provide at least one of: appName, appLogo, openRegister, openLogin",
+      "Provide at least one setting field to update",
     );
   }
 
   await AppModel.updateOne({} as any, { $set }, { runValidators: true }).exec();
-  const updated = await AppModel.findOne().lean().exec();
+  const updated = await AppModel.findOne()
+    .select(
+      [
+        "appName",
+        "appLogo",
+        "openRegister",
+        "openLogin",
+        "personSuffix",
+        "companyInformation",
+        "quotationInformation",
+      ].join(" "),
+    )
+    .lean()
+    .exec();
 
   if (updated == null) {
     return failResult(503, "App configuration not ready");
@@ -98,6 +193,9 @@ export async function uploadAppLogoImage(file: {
         appLogo: string;
         openRegister: boolean;
         openLogin: boolean;
+        personSuffix?: string[] | null;
+        companyInformation?: unknown;
+        quotationInformation?: unknown;
       } | null = null;
       await session.withTransaction(async () => {
         const currentApp = await AppModel.findOne().session(session).lean().exec();
@@ -134,7 +232,21 @@ export async function uploadAppLogoImage(file: {
           { $set: { appLogo: uploaded.url } },
           { runValidators: true, session },
         ).exec();
-        result = await AppModel.findOne().session(session).lean().exec();
+        result = await AppModel.findOne()
+          .session(session)
+          .select(
+            [
+              "appName",
+              "appLogo",
+              "openRegister",
+              "openLogin",
+              "personSuffix",
+              "companyInformation",
+              "quotationInformation",
+            ].join(" "),
+          )
+          .lean()
+          .exec();
       });
       return result;
     } finally {

@@ -53,9 +53,16 @@ export type QuotationPdfInput = {
   approvedAt: Date | null;
   lineOfBusinessName: string;
   marketSegmentName: string;
+  companyInformation: {
+    companyName: string;
+    companyAddress: string;
+    companyPhone: string;
+    companyEmail: string;
+    companyWebsite: string;
+  };
   customer: { customerName: string };
   endUser: { endUserName: string };
-  contact: { contactName: string; contactDetails: string[] };
+  contact: { contactName: string; contactSuffix: string; contactDetails: string[] };
   notes: string;
   locationNames: { provinceName: string; regencyName: string; districtName: string };
   currency: string;
@@ -66,6 +73,9 @@ export type QuotationPdfInput = {
   grandTotal: number;
   validUntil: Date | null;
   termsAndConditions: string;
+  termsOfPaymentSelected: string[];
+  termsOfDeliverySelected: string[];
+  termsOfWarrantySelected: string[];
   createdAt: Date | undefined;
   details: QuotationPdfDetail[];
 };
@@ -218,9 +228,9 @@ export function buildDocDefinition(
         },
       ];
 
-  if (logo && branding.appName) {
-    headerLeft.push({ text: branding.appName, style: "companyNameSmall", margin: [0, 4, 0, 0] });
-  }
+  // if (logo && branding.appName) {
+  //   headerLeft.push({ text: branding.appName, style: "companyNameSmall", margin: [0, 4, 0, 0] });
+  // }
 
   const metaRows: Content[] = [
     { text: "QUOTATION", style: "docTitle" },
@@ -257,10 +267,11 @@ export function buildDocDefinition(
   ];
 
   const contactLines: string[] = [];
-  if (quotation.contact.contactName) contactLines.push(quotation.contact.contactName);
-  for (const ch of quotation.contact.contactDetails ?? []) {
-    if (String(ch).trim()) contactLines.push(String(ch));
-  }
+  const fullContactName = quotation.contact.contactName
+    ? `${quotation.contact.contactName}${quotation.contact.contactSuffix ? ` ${quotation.contact.contactSuffix}` : ""}`
+    : "";
+  if (fullContactName) contactLines.push(fullContactName);
+  // Intentionally do not include contact channels in the PDF.
 
   const tableBody: TableCell[][] = [
     [
@@ -383,40 +394,83 @@ export function buildDocDefinition(
     {
       columns: [
         {
+          width: "60%",
+          stack: [
+            {
+              text: quotation.companyInformation.companyName || branding.appName || "—",
+              bold: true,
+              margin: [0, 2, 0, 0],
+            },
+            ...(quotation.companyInformation.companyAddress
+              ? [
+                  {
+                    text: quotation.companyInformation.companyAddress,
+                    margin: [0, 2, 0, 0] as [number, number, number, number],
+                  },
+                ]
+              : []),
+            ...(quotation.companyInformation.companyPhone
+              ? [
+                  {
+                    text: `Phone: ${quotation.companyInformation.companyPhone}`,
+                    margin: [0, 2, 0, 0] as [number, number, number, number],
+                  },
+                ]
+              : []),
+            ...(quotation.companyInformation.companyEmail
+              ? [
+                  {
+                    text: `Email: ${quotation.companyInformation.companyEmail}`,
+                    margin: [0, 2, 0, 0] as [number, number, number, number],
+                  },
+                ]
+              : []),
+            ...(quotation.companyInformation.companyWebsite
+              ? [
+                  {
+                    text: `Website: ${quotation.companyInformation.companyWebsite}`,
+                    margin: [0, 2, 0, 0] as [number, number, number, number],
+                  },
+                ]
+              : []),
+          ],
+        },
+        { width: "40%", text: "" },
+      ],
+      margin: [0, 0, 0, 14],
+    },
+    {
+      columns: [
+        {
           width: "50%",
           stack: [
-            { text: "Bill to", style: "sectionLabel" },
+            { text: "To", style: "sectionLabel" },
             { text: quotation.customer.customerName || "—", bold: true, margin: [0, 2, 0, 0] },
-            { text: "End user", style: "sectionLabel", margin: [0, 10, 0, 0] },
-            { text: quotation.endUser.endUserName || "—", margin: [0, 2, 0, 0] },
           ],
         },
         {
           width: "50%",
           stack: [
-            { text: "Contact", style: "sectionLabel" },
-            ...(contactLines.length > 0
-              ? contactLines.map((line) => ({
-                  text: line,
-                  margin: [0, 2, 0, 0] as [number, number, number, number],
-                }))
-              : [{ text: "—", margin: [0, 2, 0, 0] as [number, number, number, number] }]),
-            { text: "Location", style: "sectionLabel", margin: [0, 10, 0, 0] },
-            { text: locationLine(quotation.locationNames), margin: [0, 2, 0, 0] },
+            { text: "Attn", style: "sectionLabel" },
+            {
+              text:
+                quotation.contact.contactName || quotation.contact.contactSuffix
+                  ? `${quotation.contact.contactSuffix ? `${quotation.contact.contactSuffix} ` : ""}${quotation.contact.contactName}`
+                  : "—",
+              margin: [0, 2, 0, 0] as [number, number, number, number],
+            },
           ],
         },
       ],
       margin: [0, 0, 0, 12],
     },
+    // Divider line before line items
     {
-      text: [
-        { text: "Line of business: ", color: "#666", fontSize: 9 },
-        { text: quotation.lineOfBusinessName || "—", fontSize: 9 },
-        { text: "   Market segment: ", color: "#666", fontSize: 9 },
-        { text: quotation.marketSegmentName || "—", fontSize: 9 },
+      canvas: [
+        { type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: "#e2e8f0" },
       ],
-      margin: [0, 0, 0, 12],
-    },
+      margin: [0, 6, 0, 10],
+    } as unknown as Content,
     {
       table: {
         headerRows: 1,
@@ -442,6 +496,31 @@ export function buildDocDefinition(
       { text: "Terms & conditions", style: "sectionLabel", margin: [0, 16, 0, 4] },
       { text: quotation.termsAndConditions, fontSize: 8, color: "#444" },
     );
+  }
+
+  const selectedPayment = (quotation.termsOfPaymentSelected ?? []).filter((x) => String(x).trim());
+  const selectedDelivery = (quotation.termsOfDeliverySelected ?? []).filter((x) => String(x).trim());
+  const selectedWarranty = (quotation.termsOfWarrantySelected ?? []).filter((x) => String(x).trim());
+  if (selectedPayment.length || selectedDelivery.length || selectedWarranty.length) {
+    content.push({ text: "Selected terms", style: "sectionLabel", margin: [0, 16, 0, 4] });
+    if (selectedPayment.length) {
+      content.push(
+        { text: "Terms of payment", style: "sectionLabel", margin: [0, 8, 0, 2] },
+        { ul: selectedPayment, fontSize: 8, color: "#444" } as unknown as Content,
+      );
+    }
+    if (selectedDelivery.length) {
+      content.push(
+        { text: "Terms of delivery", style: "sectionLabel", margin: [0, 8, 0, 2] },
+        { ul: selectedDelivery, fontSize: 8, color: "#444" } as unknown as Content,
+      );
+    }
+    if (selectedWarranty.length) {
+      content.push(
+        { text: "Warranty", style: "sectionLabel", margin: [0, 8, 0, 2] },
+        { ul: selectedWarranty, fontSize: 8, color: "#444" } as unknown as Content,
+      );
+    }
   }
   if (String(quotation.notes ?? "").trim()) {
     content.push(

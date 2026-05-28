@@ -29,6 +29,19 @@ export async function ensureAppConfig(): Promise<void> {
     appLogo: "https://placehold.co/600x400",
     openRegister: true,
     openLogin: true,
+    personSuffix: [],
+    companyInformation: {
+      companyName: "",
+      companyAddress: "",
+      companyPhone: "",
+      companyEmail: "",
+      companyWebsite: "",
+    },
+    quotationInformation: {
+      termsOfPayment: [],
+      termsOfDelivery: [],
+      termsOfWarranty: [],
+    },
   });
   logger.info(
     { appName: created.appName, id: String(created._id) },

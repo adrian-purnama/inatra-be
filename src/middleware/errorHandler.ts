@@ -24,6 +24,7 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   if (err instanceof ValidationFailedError) {
+    logger.debug({ errors: err.details }, "Validation failed");
     sendError(res, 400, err.message, { errors: err.details });
     return;
   }
