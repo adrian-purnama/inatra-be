@@ -67,3 +67,8 @@ dataEntryRouter.get("/vendor-category", dataEntryController.getListVendorCategor
 dataEntryRouter.post("/status", dataEntryController.createStatus);
 dataEntryRouter.patch("/status/:id", dataEntryController.patchStatus);
 dataEntryRouter.delete("/status/:id", dataEntryController.deleteStatus);
+
+dataEntryRouter.get("/product", dataEntryController.listProducts);
+dataEntryRouter.post("/product", dataEntryController.createProduct);
+dataEntryRouter.patch("/product/:id", dataEntryController.patchProduct);
+dataEntryRouter.delete("/product/:id", dataEntryController.deleteProduct);

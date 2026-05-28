@@ -24,6 +24,7 @@ import { StatusModel } from "../models/status.model.js";
 import { UserModel } from "../models/user.model.js";
 import { OpportunityDetailModel } from "../models/opportunity/opportunityDetail.model.js";
 import { logger } from "../lib/logger.js";
+import { ProductModel } from "../models/product.model.js";
 
 
 
@@ -41,7 +42,7 @@ type OpportunityOut = {
   leadQualificationColor: string;
   customer: { customerName: string; customerId: string | null };
   endUser: { endUserName: string; endUserId: string | null };
-  contact: { contactName: string; contactDetails: string[] };
+  contact: { contactName: string; contactSuffix: string; contactDetails: string[] };
   notes: string;
   location: { provinceId: string | null; regencyId: string | null; districtId: string | null };
   locationNames: { provinceName: string; regencyName: string; districtName: string };
@@ -61,29 +62,85 @@ type OpportunityOut = {
   }>;
   attachmentAssetIds: string[];
   attachmentUrls: string[];
-  details: Array<{ id: string; description: string; quantity: number; price: number }>;
+  details: Array<{
+    id: string;
+    description: string;
+    productId: string | null;
+    sku: string;
+    unit: string;
+    quantity: number;
+    price: number;
+    discount: number;
+  }>;
   createdAt: Date | undefined;
   updatedAt: Date | undefined;
 };
 
 type OpportunityHeaderOut = Omit<OpportunityOut, "details">;
 
-type OpportunityDetailOut = { id: string; description: string; quantity: number; price: number };
+type OpportunityDetailOut = {
+  id: string;
+  description: string;
+  productId: string | null;
+  sku: string;
+  unit: string;
+  quantity: number;
+  price: number;
+  discount: number;
+};
 
 function calculateOpportunityTotals(
-  details: Array<{ quantity: number; price: number }>,
+  details: Array<{ quantity: number; price: number; discount?: number }>,
   taxRate: number,
 ): { subTotal: number; taxAmount: number; grandTotal: number } {
   const subTotal = Math.max(
     0,
-    details.reduce((sum, d) => sum + Number(d.quantity ?? 0) * Number(d.price ?? 0), 0),
+    details.reduce(
+      (sum, d) =>
+        sum + Number(d.quantity ?? 0) * Number(d.price ?? 0) - Number(d.discount ?? 0),
+      0,
+    ),
   );
   const taxAmount = Math.max(0, (subTotal * Number(taxRate ?? 0)) / 100);
   return { subTotal, taxAmount, grandTotal: subTotal + taxAmount };
 }
 
+type ProductLineMeta = { sku: string; unit: string };
+
+async function getProductLineMetaMap(productIds: string[]): Promise<Map<string, ProductLineMeta>> {
+  const ids = productIds
+    .map((x) => String(x ?? "").trim())
+    .filter((x) => mongoose.isValidObjectId(x))
+    .map((x) => new mongoose.Types.ObjectId(x));
+  if (ids.length === 0) return new Map();
+  const rows = await ProductModel.find({ _id: { $in: ids } })
+    .select("_id sku unit")
+    .lean()
+    .exec();
+  const map = new Map<string, ProductLineMeta>();
+  for (const r of rows as any[]) {
+    map.set(String(r._id), {
+      sku: String(r.sku ?? "").toUpperCase(),
+      unit: String(r.unit ?? "").trim(),
+    });
+  }
+  return map;
+}
+
+function resolveOpportunityDetailProductFields(
+  d: { productId?: string | null; unit?: string },
+  metaMap: Map<string, ProductLineMeta>,
+): { productId: string | null; sku: string; unit: string } {
+  const pid = d.productId && mongoose.isValidObjectId(d.productId) ? String(d.productId) : null;
+  if (!pid) {
+    return { productId: null, sku: "", unit: String(d.unit ?? "").trim() };
+  }
+  const meta = metaMap.get(pid) ?? { sku: "", unit: "" };
+  return { productId: pid, sku: meta.sku, unit: meta.unit };
+}
+
 function opportunityTotalsPayload(
-  details: Array<{ quantity: number; price: number }>,
+  details: Array<{ quantity: number; price: number; discount?: number }>,
   taxRate: number,
 ): { taxRate: number; subTotal: number; taxAmount: number; grandTotal: number } {
   const totals = calculateOpportunityTotals(details, taxRate);
@@ -107,7 +164,16 @@ function parseCloseMonth(monthValue: string | null | undefined): Date | null {
 
 function toOpportunityOut(
   row: any,
-  details: Array<{ _id: unknown; description: string; quantity: number; price: number }>,
+  details: Array<{
+    _id: unknown;
+    description: string;
+    productId?: unknown;
+    sku?: string;
+    unit?: string;
+    quantity: number;
+    price: number;
+    discount?: number;
+  }>,
   ownerName: string,
   lineOfBusinessName: string,
   marketSegmentName: string,
@@ -155,6 +221,7 @@ function toOpportunityOut(
     },
     contact: {
       contactName: String(row.contact?.contactName ?? ""),
+      contactSuffix: String(row.contact?.contactSuffix ?? ""),
       contactDetails: (row.contact?.contactDetails ?? []).map(String),
     },
     notes: String(row.notes ?? ""),
@@ -187,8 +254,12 @@ function toOpportunityOut(
     details: details.map((d) => ({
       id: String(d._id),
       description: d.description,
+      productId: d.productId ? String(d.productId) : null,
+      sku: String(d.sku ?? ""),
+      unit: String(d.unit ?? ""),
       quantity: d.quantity,
       price: d.price,
+      discount: Number(d.discount ?? 0),
     })),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -226,6 +297,7 @@ function toOpportunityHeaderOut(row: any): OpportunityHeaderOut {
     },
     contact: {
       contactName: String(row.contact?.contactName ?? ""),
+      contactSuffix: String(row.contact?.contactSuffix ?? ""),
       contactDetails: (row.contact?.contactDetails ?? []).map(String),
     },
     notes: String(row.notes ?? ""),
@@ -257,14 +329,22 @@ function toOpportunityHeaderOut(row: any): OpportunityHeaderOut {
 function toOpportunityDetailOut(row: {
   _id: unknown;
   description: string;
+  productId?: unknown;
+  sku?: string;
+  unit?: string;
   quantity: number;
   price: number;
+  discount?: number;
 }): OpportunityDetailOut {
   return {
     id: String(row._id),
     description: String(row.description ?? ""),
+    productId: row.productId ? String(row.productId) : null,
+    sku: String(row.sku ?? ""),
+    unit: String(row.unit ?? ""),
     quantity: Number(row.quantity ?? 0),
     price: Number(row.price ?? 0),
+    discount: Number(row.discount ?? 0),
   };
 }
 
@@ -641,6 +721,7 @@ export async function createOpportunity(
   }
   const availableTo = [...new Set([ownerId, ...(dto.availableTo ?? [])])];
   const contactName = dto.contactName?.trim() ?? "";
+  const contactSuffix = dto.contactSuffix?.trim() ?? "";
   if (!contactName) {
     return failResult(400, "Contact person is required");
   }
@@ -671,6 +752,7 @@ export async function createOpportunity(
             },
             contact: {
               contactName,
+              contactSuffix,
               contactDetails: (dto.contactDetails ?? []).map((x) => x.trim()).filter(Boolean),
             },
             notes: dto.notes?.trim() ?? "",
@@ -684,6 +766,7 @@ export async function createOpportunity(
               (dto.details ?? []).filter((d) => d.description.trim().length > 0).map((d) => ({
                 quantity: d.quantity,
                 price: d.price,
+                discount: Number(d.discount ?? 0),
               })),
               Number(dto.taxRate ?? 0),
             ),
@@ -705,13 +788,19 @@ export async function createOpportunity(
 
       const details = (dto.details ?? []).filter((d) => d.description.trim().length > 0);
       if (details.length > 0) {
+        const metaMap = await getProductLineMetaMap(details.map((d) => d.productId ?? ""));
         await OpportunityDetailModel.insertMany(
-          details.map((d) => ({
-            opportunityId: createdId,
-            description: d.description.trim(),
-            quantity: d.quantity,
-            price: d.price,
-          })),
+          details.map((d) => {
+            const productFields = resolveOpportunityDetailProductFields(d, metaMap);
+            return {
+              opportunityId: createdId,
+              description: d.description.trim(),
+              ...productFields,
+              quantity: d.quantity,
+              price: d.price,
+              discount: Number(d.discount ?? 0),
+            };
+          }),
           { session },
         );
       }
@@ -802,9 +891,14 @@ export async function patchOpportunity(
   if (dto.contactName !== undefined && !dto.contactName.trim()) {
     return failResult(400, "Contact person is required");
   }
-  if (dto.contactName !== undefined || dto.contactDetails !== undefined) {
+  if (
+    dto.contactName !== undefined ||
+    dto.contactSuffix !== undefined ||
+    dto.contactDetails !== undefined
+  ) {
     $set.contact = {
       contactName: dto.contactName?.trim() ?? existing.contact?.contactName ?? "",
+      contactSuffix: dto.contactSuffix?.trim() ?? existing.contact?.contactSuffix ?? "",
       contactDetails:
         dto.contactDetails?.map((x) => x.trim()).filter(Boolean) ??
         (existing.contact?.contactDetails ?? []).map(String),
@@ -838,13 +932,21 @@ export async function patchOpportunity(
       dto.details !== undefined
         ? dto.details
             .filter((d) => d.description.trim().length > 0)
-            .map((d) => ({ quantity: d.quantity, price: d.price }))
+            .map((d) => ({
+              quantity: d.quantity,
+              price: d.price,
+              discount: Number(d.discount ?? 0),
+            }))
         : (
             await OpportunityDetailModel.find({ opportunityId })
-              .select("quantity price")
+              .select("quantity price discount")
               .lean()
               .exec()
-          ).map((d) => ({ quantity: Number(d.quantity ?? 0), price: Number(d.price ?? 0) }));
+          ).map((d) => ({
+            quantity: Number(d.quantity ?? 0),
+            price: Number(d.price ?? 0),
+            discount: Number(d.discount ?? 0),
+          }));
     const taxRate = Number(dto.taxRate ?? existing.taxRate ?? 0);
     Object.assign($set, opportunityTotalsPayload(detailsForTotals, taxRate));
   }
@@ -859,13 +961,19 @@ export async function patchOpportunity(
         await OpportunityDetailModel.deleteMany({ opportunityId }, { session }).exec();
         const details = dto.details.filter((d) => d.description.trim().length > 0);
         if (details.length > 0) {
+          const metaMap = await getProductLineMetaMap(details.map((d) => d.productId ?? ""));
           await OpportunityDetailModel.insertMany(
-            details.map((d) => ({
-              opportunityId,
-              description: d.description.trim(),
-              quantity: d.quantity,
-              price: d.price,
-            })),
+            details.map((d) => {
+              const productFields = resolveOpportunityDetailProductFields(d, metaMap);
+              return {
+                opportunityId,
+                description: d.description.trim(),
+                ...productFields,
+                quantity: d.quantity,
+                price: d.price,
+                discount: Number(d.discount ?? 0),
+              };
+            }),
             { session },
           );
         }
