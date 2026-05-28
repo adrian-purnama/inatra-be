@@ -55,12 +55,51 @@ if (env.nodeEnv === "production") {
   app.set("trust proxy", 1);
 }
 
+const normalizeOrigin = (s: string) => s.trim().replace(/\/+$/, "");
+const allowedOrigins = String(env.feLink ?? "")
+  .trim()
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+logger.info(
+  {
+    nodeEnv: env.nodeEnv,
+    feLinkRaw: env.feLink || "",
+    allowedOrigins,
+  },
+  "CORS config",
+);
+
 app.use(
   cors({
-    origin: env.feLink ? env.feLink : true,
-    credentials: Boolean(env.feLink),
+    origin: (origin, callback) => {
+      // Non-browser clients (curl/postman) may not send Origin → allow.
+      if (!origin) return callback(null, true);
+
+      // Support comma-separated allowlist (e.g. "https://a.com,https://b.com")
+      if (allowedOrigins.length === 0) return callback(null, true);
+
+      const incoming = normalizeOrigin(origin);
+      const ok = allowedOrigins.includes(incoming);
+      if (!ok) {
+        // Only log blocks to avoid noisy logs.
+        logger.warn({ origin: incoming, allowedOrigins }, "CORS blocked origin");
+      }
+      return callback(null, ok);
+    },
+    credentials: true,
   }),
 );
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    status: "ok",
+    nodeEnv: env.nodeEnv,
+    ts: new Date().toISOString(),
+  });
+});
 app.use(pinoHttp({ logger, ...slimPinoHttpOpts }));
 /**
  * Public file streams must be mounted **before** `helmet()`. Otherwise Helmet adds
