@@ -57,8 +57,25 @@ if (env.nodeEnv === "production") {
 
 app.use(
   cors({
-    origin: env.feLink ? env.feLink : true,
-    credentials: Boolean(env.feLink),
+    origin: (origin, callback) => {
+      // Non-browser clients (curl/postman) may not send Origin → allow.
+      if (!origin) return callback(null, true);
+
+      // Support comma-separated allowlist (e.g. "https://a.com,https://b.com")
+      const raw = String(env.feLink ?? "").trim();
+      if (!raw) return callback(null, true);
+
+      const normalize = (s: string) => s.trim().replace(/\/+$/, "");
+      const allow = raw
+        .split(",")
+        .map(normalize)
+        .filter(Boolean);
+
+      const incoming = normalize(origin);
+      const ok = allow.includes(incoming);
+      return callback(null, ok);
+    },
+    credentials: true,
   }),
 );
 app.use(pinoHttp({ logger, ...slimPinoHttpOpts }));
